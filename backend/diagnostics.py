@@ -1,218 +1,124 @@
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 
 def compute_health_score(row):
-    # Simple example: combine normalized efficiency and temp
+    """Calculate health score based on efficiency, temperature, and ZVS status"""
     score = 0.5 * (row['efficiency_percent'] / 98) \
           + 0.3 * (1 - (row['temperature_C'] - 35) / (65 - 35)) \
           + 0.2 * (row['ZVS_status'])
     return round(score * 100, 1)
 
 def add_health_scores(df):
+    """Add health scores to dataframe"""
     df['health_score'] = df.apply(compute_health_score, axis=1)
     return df
 
 def detect_anomalies(df: pd.DataFrame) -> List[Dict[str, Any]]:
-    """Detect anomalies in the data using statistical methods"""
-    anomalies = []
+    """Detect basic anomalies in the data and include fields used by reports."""
+    anomalies: List[Dict[str, Any]] = []
     
     if df.empty:
         return anomalies
     
-    # Get latest data point
     latest = df.iloc[-1]
+    ts = latest['timestamp'] if 'timestamp' in latest else datetime.now()
     
-    # Define thresholds for different metrics
+    # Threshold rules
     thresholds = {
-        'efficiency_percent': {'warning': 95.0, 'critical': 90.0},
-        'temperature_C': {'warning': 60.0, 'critical': 70.0},
-        'health_score': {'warning': 80.0, 'critical': 60.0},
-        'power_loss_W': {'warning': 100.0, 'critical': 200.0}
+        'efficiency_percent': {'warning': 95.0, 'critical': 90.0, 'direction': 'low'},
+        'temperature_C': {'warning': 60.0, 'critical': 70.0, 'direction': 'high'},
+        'health_score': {'warning': 80.0, 'critical': 60.0, 'direction': 'low'},
     }
     
-    # Check each metric against thresholds
-    for metric, threshold_values in thresholds.items():
+    for metric, cfg in thresholds.items():
         if metric in latest:
-            value = latest[metric]
-            warning_thresh = threshold_values['warning']
-            critical_thresh = threshold_values['critical']
+            val = latest[metric]
+            severity = None
+            thr = None
+            if cfg['direction'] == 'low':
+                if val <= cfg['critical']:
+                    severity = 'critical'
+                    thr = cfg['critical']
+                elif val <= cfg['warning']:
+                    severity = 'warning'
+                    thr = cfg['warning']
+            else:  # high means higher is worse
+                if val >= cfg['critical']:
+                    severity = 'critical'
+                    thr = cfg['critical']
+                elif val >= cfg['warning']:
+                    severity = 'warning'
+                    thr = cfg['warning']
             
-            if metric == 'efficiency_percent':
-                # For efficiency, lower is worse
-                if value < critical_thresh:
-                    severity = 'critical'
-                    threshold = critical_thresh
-                elif value < warning_thresh:
-                    severity = 'warning'
-                    threshold = warning_thresh
-                else:
-                    continue
-            elif metric == 'temperature_C':
-                # For temperature, higher is worse
-                if value > critical_thresh:
-                    severity = 'critical'
-                    threshold = critical_thresh
-                elif value > warning_thresh:
-                    severity = 'warning'
-                    threshold = warning_thresh
-                else:
-                    continue
-            elif metric == 'health_score':
-                # For health score, lower is worse
-                if value < critical_thresh:
-                    severity = 'critical'
-                    threshold = critical_thresh
-                elif value < warning_thresh:
-                    severity = 'warning'
-                    threshold = warning_thresh
-                else:
-                    continue
-            elif metric == 'power_loss_W':
-                # For power loss, higher is worse
-                if value > critical_thresh:
-                    severity = 'critical'
-                    threshold = critical_thresh
-                elif value > warning_thresh:
-                    severity = 'warning'
-                    threshold = warning_thresh
-                else:
-                    continue
-            
-            anomalies.append({
-                'timestamp': latest['timestamp'],
-                'metric': metric,
-                'value': value,
-                'threshold': threshold,
-                'severity': severity,
-                'message': f"{metric.replace('_', ' ').title()} is {severity}: {value:.2f} (threshold: {threshold:.2f})"
-            })
+            if severity:
+                anomalies.append({
+                    'timestamp': pd.to_datetime(ts),
+                    'metric': metric,
+                    'value': float(val),
+                    'threshold': float(thr),
+                    'severity': severity,
+                    'message': f"{metric.replace('_',' ').title()} {'low' if cfg['direction']=='low' else 'high'}: {val} (thr: {thr})"
+                })
     
     return anomalies
 
-def generate_recommendations(df: pd.DataFrame, anomalies: List[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    """Generate actionable recommendations based on data analysis"""
+def generate_basic_recommendations(df: pd.DataFrame) -> List[str]:
+    """Generate simple recommendations based on current data"""
     recommendations = []
     
     if df.empty:
         return recommendations
     
-    # Get latest data
     latest = df.iloc[-1]
     
-    # Efficiency recommendations
-    if 'efficiency_percent' in latest:
-        efficiency = latest['efficiency_percent']
-        if efficiency < 95.0:
-            # Calculate improvement potential
-            target_efficiency = 98.0  # Target efficiency
-            improvement = target_efficiency - efficiency
-            
-            # Estimate phase shift adjustment
-            delta_phi = min(0.1, improvement / 100)  # Conservative estimate
-            
-            recommendations.append({
-                'action': f"Increase phase shift (φ) by {delta_phi:.3f} to improve efficiency by ~{improvement:.1f}%",
-                'impact': f"Expected efficiency improvement: {improvement:.1f}%",
-                'priority': 'high' if efficiency < 90.0 else 'medium',
-                'category': 'efficiency',
-                'estimated_effort': 'low',
-                'confidence': 0.8
-            })
+    # Simple efficiency check
+    if 'efficiency_percent' in latest and latest['efficiency_percent'] < 95.0:
+        recommendations.append("Consider increasing phase shift to improve efficiency")
     
-    # Temperature recommendations
-    if 'temperature_C' in latest:
-        temperature = latest['temperature_C']
-        if temperature > 60.0:
-            # Calculate power reduction needed
-            temp_excess = temperature - 60.0
-            power_reduction = temp_excess * 20  # Rough estimate: 20W per °C
-            
-            recommendations.append({
-                'action': f"Reduce load power by {power_reduction:.0f}W to lower temperature by ~{temp_excess:.1f}°C",
-                'impact': f"Expected temperature reduction: {temp_excess:.1f}°C",
-                'priority': 'high' if temperature > 70.0 else 'medium',
-                'category': 'thermal',
-                'estimated_effort': 'medium',
-                'confidence': 0.7
-            })
+    # Simple temperature check
+    if 'temperature_C' in latest and latest['temperature_C'] > 60.0:
+        recommendations.append("Reduce load power or improve cooling to lower temperature")
     
-    # ZVS recommendations
-    if 'ZVS_status' in latest:
-        zvs_status = latest['ZVS_status']
-        if not zvs_status:
-            # Check if we can estimate phase shift adjustment
-            if 'phi' in latest:
-                current_phi = latest['phi']
-                target_phi = min(np.pi/2, current_phi + 0.05)
-                delta_phi = target_phi - current_phi
-                
-                recommendations.append({
-                    'action': f"Increase phase shift (φ) by {delta_phi:.3f} to restore ZVS operation",
-                    'impact': "Expected ZVS restoration and reduced switching losses",
-                    'priority': 'medium',
-                    'category': 'zvs',
-                    'estimated_effort': 'low',
-                    'confidence': 0.6
-                })
-    
-    # Health score recommendations
-    if 'health_score' in latest:
-        health_score = latest['health_score']
-        if health_score < 80.0:
-            recommendations.append({
-                'action': "Perform preventive maintenance on power components",
-                'impact': "Prevent further degradation and potential failures",
-                'priority': 'high',
-                'category': 'maintenance',
-                'estimated_effort': 'high',
-                'confidence': 0.9
-            })
-    
-    # Sort by priority and confidence
-    priority_order = {'critical': 3, 'high': 2, 'medium': 1, 'low': 0}
-    recommendations.sort(key=lambda x: (priority_order.get(x['priority'], 0), x['confidence']), reverse=True)
+    # Simple ZVS check
+    if 'ZVS_status' in latest and not latest['ZVS_status']:
+        recommendations.append("Adjust phase shift to restore ZVS operation")
     
     return recommendations
 
 def analyze_trends(df: pd.DataFrame, hours: int = 24) -> Dict[str, Any]:
-    """Analyze trends in the data over specified time period"""
+    """Analyze simple trends over a period and return percent changes per metric."""
+    trends: Dict[str, Any] = {}
+    if df.empty or 'timestamp' not in df.columns:
+        return trends
+    
+    df = df.copy()
+    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+    df = df.dropna(subset=['timestamp']).sort_values('timestamp')
     if df.empty:
-        return {}
+        return trends
     
-    # Get recent data
-    latest_time = df['timestamp'].max()
-    start_time = latest_time - timedelta(hours=hours)
-    recent_df = df[df['timestamp'] >= start_time]
+    cutoff = df['timestamp'].max() - pd.Timedelta(hours=hours)
+    window_df = df[df['timestamp'] >= cutoff]
+    if len(window_df) < 2:
+        return trends
     
-    if recent_df.empty:
-        return {}
-    
-    # Calculate trends
-    trends = {}
-    metrics = ['efficiency_percent', 'temperature_C', 'health_score', 'power_loss_W']
-    
+    metrics = ['efficiency_percent', 'temperature_C', 'health_score']
     for metric in metrics:
-        if metric in recent_df.columns:
-            values = recent_df[metric].dropna()
-            if len(values) > 1:
-                # Linear regression for trend
-                x = np.arange(len(values))
-                slope = np.polyfit(x, values, 1)[0]
-                
-                # Calculate percentage change
-                if values.iloc[0] != 0:
-                    pct_change = ((values.iloc[-1] - values.iloc[0]) / values.iloc[0]) * 100
-                else:
-                    pct_change = 0
-                
+        if metric in window_df.columns and window_df[metric].notna().sum() >= 2:
+            start_val = window_df[metric].iloc[0]
+            end_val = window_df[metric].iloc[-1]
+            if pd.notna(start_val) and start_val != 0 and pd.notna(end_val):
+                pct_change = ((end_val - start_val) / abs(start_val)) * 100.0
+                avg_val = window_df[metric].mean()
                 trends[metric] = {
-                    'slope': slope,
-                    'pct_change': pct_change,
-                    'trend': 'increasing' if slope > 0 else 'decreasing' if slope < 0 else 'stable',
-                    'current': values.iloc[-1],
-                    'average': values.mean()
+                    'start': float(start_val),
+                    'end': float(end_val),
+                    'current': float(end_val),
+                    'average': float(avg_val) if pd.notna(avg_val) else float('nan'),
+                    'pct_change': float(pct_change),
+                    'trend': 'increasing' if pct_change > 0 else 'decreasing' if pct_change < 0 else 'stable'
                 }
-    
     return trends
+

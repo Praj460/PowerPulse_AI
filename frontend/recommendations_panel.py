@@ -10,7 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from backend.sheets_loader import load_sheets_data
 from backend.recommendations import DABRecommendations
-from backend.diagnostics import add_health_scores, analyze_trends
+from backend.diagnostics import add_health_scores, analyze_trends, detect_anomalies
 from backend.simulator import DABSimulator
 
 def show():
@@ -78,67 +78,13 @@ def show():
     st.subheader("Actionable Recommendations")
     
     # Get anomalies and recommendations
-    anomalies = recommender.detect_anomalies(df)
-    recommendations = recommender.generate_recommendations(df, anomalies)
+    anomalies = detect_anomalies(df)
+    recommendations = recommender.generate_recommendations(df)
     
     if recommendations:
-        # Sort by priority and impact
-        priority_order = {'critical': 3, 'high': 2, 'medium': 1, 'low': 0}
-        recommendations.sort(key=lambda x: (priority_order.get(x['priority'], 0), x['confidence']), reverse=True)
-        
-        # Display top recommendations
+        # Display top recommendations (simple list)
         for i, rec in enumerate(recommendations[:5], 1):
-            with st.expander(f"🎯 {rec['action']}", expanded=i <= 2):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.write(f"**Impact:** {rec['impact']}")
-                    st.write(f"**Priority:** {rec['priority'].title()}")
-                    st.write(f"**Effort:** {rec['estimated_effort'].title()}")
-                    st.write(f"**Confidence:** {rec['confidence']:.1%}")
-                    
-                    # Calculate impact score
-                    impact_score = recommender.calculate_impact_score(rec)
-                    st.write(f"**Impact Score:** {impact_score:.0f}/100")
-                
-                with col2:
-                    # Show parameter optimization if applicable
-                    if 'phi' in rec['action'] and 'phase shift' in rec['action'].lower():
-                        st.write("**Parameter Optimization:**")
-                        
-                        # Extract current phi value
-                        current_phi = latest.get('phi', 0.3)
-                        if current_phi > 0:
-                            # Estimate improvement
-                            suggested_phi = min(np.pi/2, current_phi + 0.05)
-                            st.write(f"• Current φ: {current_phi:.3f}")
-                            st.write(f"• Suggested φ: {suggested_phi:.3f}")
-                            st.write(f"• Change: +{(suggested_phi - current_phi):.3f}")
-                    
-                    elif 'duty cycle' in rec['action'].lower():
-                        st.write("**Parameter Optimization:**")
-                        delta1 = latest.get('delta1', 0.5)
-                        delta2 = latest.get('delta2', 0.5)
-                        balanced_delta = (delta1 + delta2) / 2
-                        st.write(f"• Current δ₁: {delta1:.2f}")
-                        st.write(f"• Current δ₂: {delta2:.2f}")
-                        st.write(f"• Suggested: {balanced_delta:.2f}")
-                
-                # Action buttons
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if st.button(f"✅ Implement {i}", key=f"implement_{i}"):
-                        st.success(f"Recommendation {i} marked as implemented!")
-                
-                with col2:
-                    if st.button(f"📊 Analyze Impact {i}", key=f"analyze_{i}"):
-                        # Show impact analysis
-                        st.info("Impact analysis would be performed here.")
-                
-                with col3:
-                    if st.button(f"⏰ Schedule {i}", key=f"schedule_{i}"):
-                        st.info("Recommendation scheduled for later implementation.")
+            st.write(f"{i}. {rec}")
     
     else:
         st.success("✅ All systems are operating optimally! No recommendations needed at this time.")
@@ -363,21 +309,9 @@ def show():
     
     with col1:
         if st.button("📊 Export Recommendations"):
-            # Create recommendations summary
             if recommendations:
-                rec_data = []
-                for rec in recommendations:
-                    rec_data.append({
-                        'Action': rec['action'],
-                        'Impact': rec['impact'],
-                        'Priority': rec['priority'],
-                        'Effort': rec['estimated_effort'],
-                        'Confidence': f"{rec['confidence']:.1%}"
-                    })
-                
-                rec_df = pd.DataFrame(rec_data)
+                rec_df = pd.DataFrame({'Recommendation': recommendations})
                 csv = rec_df.to_csv(index=False)
-                
                 st.download_button(
                     label="📥 Download CSV",
                     data=csv,

@@ -9,7 +9,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 import numpy as np
-from backend.diagnostics import add_health_scores, detect_anomalies, generate_recommendations
+from backend.diagnostics import add_health_scores, detect_anomalies, generate_basic_recommendations
 
 def create_health_report(df, report_type='weekly', output_path=None):
     """
@@ -26,7 +26,7 @@ def create_health_report(df, report_type='weekly', output_path=None):
     # Add health scores and detect anomalies
     df = add_health_scores(df)
     anomalies = detect_anomalies(df)
-    recommendations = generate_recommendations(df, anomalies)
+    recommendations = generate_basic_recommendations(df)
     
     # Filter data based on report type
     if report_type == 'weekly':
@@ -131,9 +131,7 @@ def create_health_report(df, report_type='weekly', output_path=None):
     if recommendations:
         story.append(Paragraph("Recommendations", styles['Heading2']))
         for i, rec in enumerate(recommendations[:5], 1):  # Limit to top 5
-            story.append(Paragraph(f"{i}. {rec['action']}", styles['Normal']))
-            story.append(Paragraph(f"   Expected Impact: {rec['impact']}", styles['Normal']))
-            story.append(Paragraph(f"   Priority: {rec['priority']}", styles['Normal']))
+            story.append(Paragraph(f"{i}. {rec}", styles['Normal']))
             story.append(Spacer(1, 10))
     
     # Build PDF

@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from backend.sheets_loader import load_sheets_data
 from backend.reports import create_health_report
-from backend.diagnostics import add_health_scores, detect_anomalies, generate_recommendations
+from backend.diagnostics import add_health_scores, detect_anomalies, generate_basic_recommendations
 from backend.alerting import DABAlerting
 
 def show():
@@ -139,15 +139,11 @@ def show():
     if include_recommendations:
         st.subheader("Recommendations")
         
-        recommendations = generate_recommendations(filtered_df, anomalies if include_anomalies else None)
+        recommendations = generate_basic_recommendations(filtered_df)
         
         if recommendations:
             for i, rec in enumerate(recommendations[:5], 1):
-                with st.expander(f"Recommendation {i}: {rec['action']}"):
-                    st.write(f"**Impact:** {rec['impact']}")
-                    st.write(f"**Priority:** {rec['priority'].title()}")
-                    st.write(f"**Effort:** {rec['estimated_effort'].title()}")
-                    st.write(f"**Confidence:** {rec['confidence']:.1%}")
+                st.write(f"{i}. {rec}")
         else:
             st.success("✅ No recommendations needed. System is operating optimally!")
     
